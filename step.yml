@@ -116,16 +116,16 @@ inputs:
 
 outputs:
   - HEXSIGN_CERTIFICATE_PATH:
-      opts:
-        title: Path to the downloaded .p12 file
-        summary: Absolute path to the downloaded certificate, or empty if no certificate was fetched.
+    opts:
+      title: Path to the downloaded .p12 file
+      summary: Absolute path to the downloaded certificate, or empty if no certificate was fetched.
 
   - HEXSIGN_CERTIFICATE_PASSWORD_PATH:
-      opts:
-        title: Path to the .password file
-        summary: Absolute path to the certificate's password file (the file's contents are the password).
+    opts:
+      title: Path to the .password file
+      summary: Absolute path to the certificate's password file (the file's contents are the password).
 
   - HEXSIGN_PROFILE_PATH:
-      opts:
-        title: Path to the downloaded .mobileprovision file
-        summary: Absolute path to the downloaded provisioning profile, or empty if no profile was fetched.
+    opts:
+      title: Path to the downloaded .mobileprovision file
+      summary: Absolute path to the downloaded provisioning profile, or empty if no profile was fetched.
