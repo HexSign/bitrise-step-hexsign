@@ -20,6 +20,10 @@ website: https://github.com/hexsign/bitrise-step-hexsign
 source_code_url: https://github.com/hexsign/bitrise-step-hexsign
 support_url: https://github.com/hexsign/bitrise-step-hexsign/issues
 
+asset_urls:
+  icon.svg: https://raw.githubusercontent.com/hexsign/bitrise-step-hexsign/main/assets/logo.svg
+  icon.png: https://raw.githubusercontent.com/hexsign/bitrise-step-hexsign/main/assets/logo.png
+
 project_type_tags:
   - ios
   - macos
