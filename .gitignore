@@ -1,0 +1,7 @@
+.bitrise.secrets.yml
+.bitrise/
+_tmp/
+*.p12
+*.password
+*.mobileprovision
+.DS_Store

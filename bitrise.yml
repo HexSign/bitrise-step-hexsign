@@ -1,0 +1,56 @@
+format_version: "11"
+default_step_lib_source: https://github.com/bitrise-io/bitrise-steplib.git
+
+app:
+  envs:
+    - BITRISE_STEP_ID: hexsign-fetch-signing-material
+    - BITRISE_STEP_VERSION: "0.1.0"
+    - BITRISE_STEP_GIT_CLONE_URL: https://github.com/hexsign/bitrise-step-hexsign.git
+    - MY_STEPLIB_REPO_FORK_GIT_URL: $MY_STEPLIB_REPO_FORK_GIT_URL
+
+workflows:
+  test:
+    steps:
+      - path::./:
+          title: HexSign — Fetch Signing Material
+          inputs:
+            - certificate_id: $TEST_CERTIFICATE_ID
+            - profile_id: $TEST_PROFILE_ID
+            - client_id: $HEXSIGN_CLIENT_ID
+            - client_secret: $HEXSIGN_CLIENT_SECRET
+            - output_dir: $BITRISE_DEPLOY_DIR
+            - cli_version: latest
+      - script:
+          title: Assert outputs are populated
+          inputs:
+            - content: |-
+                #!/usr/bin/env bash
+                set -euo pipefail
+                [[ -f "$HEXSIGN_CERTIFICATE_PATH" ]] || { echo "no certificate path"; exit 1; }
+                [[ -f "$HEXSIGN_PROFILE_PATH"     ]] || { echo "no profile path"; exit 1; }
+                echo "✓ certificate at $HEXSIGN_CERTIFICATE_PATH"
+                echo "✓ profile     at $HEXSIGN_PROFILE_PATH"
+
+  audit-this-step:
+    steps:
+      - script:
+          inputs:
+            - content: stepman audit --step-yml ./step.yml
+
+  share-this-step:
+    envs:
+      - MY_STEPLIB_REPO_FORK_GIT_URL: $MY_STEPLIB_REPO_FORK_GIT_URL
+      - BITRISE_STEP_ID: $BITRISE_STEP_ID
+      - BITRISE_STEP_VERSION: $BITRISE_STEP_VERSION
+      - BITRISE_STEP_GIT_CLONE_URL: $BITRISE_STEP_GIT_CLONE_URL
+    steps:
+      - script:
+          inputs:
+            - content: |-
+                #!/usr/bin/env bash
+                set -euo pipefail
+                stepman share start --collection "$MY_STEPLIB_REPO_FORK_GIT_URL"
+                stepman share create --tag "$BITRISE_STEP_VERSION" \
+                  --git "$BITRISE_STEP_GIT_CLONE_URL" \
+                  --stepid "$BITRISE_STEP_ID"
+                stepman share finish
