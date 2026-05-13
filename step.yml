@@ -5,9 +5,19 @@ description: |-
   (`.mobileprovision`) from your [HexSign](https://hexsign.io) account, ready for
   consumption by `certificate-and-profile-installer`, `xcode-archive`, or `fastlane`.
 
-  At least one of `certificate_id` or `profile_id` must be provided — both are optional
-  individually, so this single step covers fetch-cert-only, fetch-profile-only, and
-  fetch-both flows.
+  Two fetch modes per artefact:
+
+  - **By id** — set `certificate_id` / `profile_id` to a single HexSign UUID.
+  - **By filter** — set `certificate_type` + `team_id` (downloads every matching cert
+    for that Apple Developer team) or `bundle_id` (downloads every profile for that
+    bundle, optionally scoped to `team_id`). Survives certificate / profile rotation
+    without hard-coded IDs.
+
+  At least one of `certificate_id`, `certificate_type`, `profile_id`, or `bundle_id`
+  must be provided. The single-value outputs (`HEXSIGN_CERTIFICATE_PATH`,
+  `HEXSIGN_PROFILE_PATH`) hold the first match; the plural outputs
+  (`HEXSIGN_CERTIFICATE_PATHS`, `HEXSIGN_PROFILE_PATHS`) hold every downloaded file
+  as a newline-separated list.
 
   The `hexsign` CLI binary is downloaded from the official GitHub releases on first run
   and verified against the release's `checksums.txt`. Set `cli_version` to pin a specific
@@ -55,19 +65,52 @@ inputs:
   - certificate_id: ""
     opts:
       title: Certificate ID
-      summary: HexSign certificate ID to download (optional).
+      summary: HexSign certificate ID to download (single-cert mode).
       description: |
-        The HexSign certificate ID to download. Leave empty to skip certificate download.
-        At least one of `certificate_id` or `profile_id` must be provided.
+        The HexSign certificate UUID to download. Mutually exclusive with
+        `certificate_type`. Leave empty to skip per-id certificate download.
+      is_required: false
+
+  - certificate_type: ""
+    opts:
+      title: Certificate Type (bulk mode)
+      summary: Apple certificate type, e.g. IOS_DISTRIBUTION (requires `team_id`).
+      description: |
+        Downloads every signing certificate of this type for the Apple Developer
+        team identified by `team_id`. Mutually exclusive with `certificate_id`.
+        Accepted values: IOS_DEVELOPMENT, IOS_DISTRIBUTION,
+        MAC_APP_DEVELOPMENT, MAC_APP_DISTRIBUTION, MAC_INSTALLER_DISTRIBUTION,
+        DEVELOPER_ID_APPLICATION, DEVELOPER_ID_APPLICATION_G2,
+        DEVELOPER_ID_KEXT, DEVELOPER_ID_KEXT_G2, DEVELOPER_ID_INSTALLER,
+        DEVELOPMENT, DISTRIBUTION, PASS_TYPE_ID, PASS_TYPE_ID_WITH_NFC.
       is_required: false
 
   - profile_id: ""
     opts:
       title: Provisioning Profile ID
-      summary: HexSign provisioning profile ID to download (optional).
+      summary: HexSign provisioning profile ID to download (single-profile mode).
       description: |
-        The HexSign provisioning profile ID to download. Leave empty to skip profile download.
-        At least one of `certificate_id` or `profile_id` must be provided.
+        The HexSign provisioning profile UUID to download. Mutually exclusive
+        with `bundle_id`. Leave empty to skip per-id profile download.
+      is_required: false
+
+  - bundle_id: ""
+    opts:
+      title: Bundle ID (bulk mode)
+      summary: App bundle identifier — downloads every matching profile.
+      description: |
+        Downloads every `.mobileprovision` linked to this bundle identifier.
+        Pair with `team_id` to scope across linked Apple accounts. Mutually
+        exclusive with `profile_id`.
+      is_required: false
+
+  - team_id: ""
+    opts:
+      title: Apple Developer Team ID
+      summary: Scopes bulk downloads to a specific Apple Developer team.
+      description: |
+        Required when `certificate_type` is set. Optional alongside `bundle_id`
+        to disambiguate between linked Apple accounts that share the same bundle.
       is_required: false
 
   - client_id: "$HEXSIGN_CLIENT_ID"
@@ -121,15 +164,30 @@ inputs:
 outputs:
   - HEXSIGN_CERTIFICATE_PATH:
     opts:
-      title: Path to the downloaded .p12 file
-      summary: Absolute path to the downloaded certificate, or empty if no certificate was fetched.
+      title: Path to the first downloaded .p12 file
+      summary: Absolute path to the first downloaded certificate, or empty if none was fetched. In bulk mode, see HEXSIGN_CERTIFICATE_PATHS for the full list.
 
   - HEXSIGN_CERTIFICATE_PASSWORD_PATH:
     opts:
-      title: Path to the .password file
-      summary: Absolute path to the certificate's password file (the file's contents are the password).
+      title: Path to the first .password file
+      summary: Absolute path to the first certificate's password file (the file's contents are the password). In bulk mode, see HEXSIGN_CERTIFICATE_PASSWORD_PATHS for the full list.
 
   - HEXSIGN_PROFILE_PATH:
     opts:
-      title: Path to the downloaded .mobileprovision file
-      summary: Absolute path to the downloaded provisioning profile, or empty if no profile was fetched.
+      title: Path to the first downloaded .mobileprovision file
+      summary: Absolute path to the first downloaded provisioning profile, or empty if none was fetched. In bulk mode, see HEXSIGN_PROFILE_PATHS for the full list.
+
+  - HEXSIGN_CERTIFICATE_PATHS:
+    opts:
+      title: Newline-separated list of all .p12 paths
+      summary: Every downloaded certificate path, one per line. Only set in bulk mode (certificate_type + team_id).
+
+  - HEXSIGN_CERTIFICATE_PASSWORD_PATHS:
+    opts:
+      title: Newline-separated list of all .password paths
+      summary: Every downloaded certificate password path, one per line. Only set in bulk mode.
+
+  - HEXSIGN_PROFILE_PATHS:
+    opts:
+      title: Newline-separated list of all .mobileprovision paths
+      summary: Every downloaded provisioning profile path, one per line. Only set in bulk mode (bundle_id).

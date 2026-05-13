@@ -10,8 +10,23 @@ set -euo pipefail
 
 # ── input validation ────────────────────────────────────────────────────────────
 
-if [[ -z "${certificate_id:-}" && -z "${profile_id:-}" ]]; then
-  echo "::error::At least one of \`certificate_id\` or \`profile_id\` must be provided."
+if [[ -z "${certificate_id:-}" && -z "${certificate_type:-}" && -z "${profile_id:-}" && -z "${bundle_id:-}" ]]; then
+  echo "::error::At least one of \`certificate_id\`, \`certificate_type\`, \`profile_id\`, or \`bundle_id\` must be provided."
+  exit 1
+fi
+
+if [[ -n "${certificate_id:-}" && -n "${certificate_type:-}" ]]; then
+  echo "::error::\`certificate_id\` and \`certificate_type\` are mutually exclusive."
+  exit 1
+fi
+
+if [[ -n "${certificate_type:-}" && -z "${team_id:-}" ]]; then
+  echo "::error::\`certificate_type\` requires \`team_id\`."
+  exit 1
+fi
+
+if [[ -n "${profile_id:-}" && -n "${bundle_id:-}" ]]; then
+  echo "::error::\`profile_id\` and \`bundle_id\` are mutually exclusive."
   exit 1
 fi
 
@@ -83,31 +98,76 @@ if [[ -n "${scopes:-}" ]]; then
   export HEXSIGN_CLIENT_SCOPES="${scopes}"
 fi
 
-cert_path=""
-cert_password_path=""
-profile_path=""
-
+# Download via the CLI; afterwards enumerate the output directory so single-id
+# and bulk modes share one path-collection branch.
 if [[ -n "${certificate_id:-}" ]]; then
   echo "Downloading certificate ${certificate_id}…"
   "${hexsign_bin}" certificates download "${certificate_id}" --output-dir "${output_dir_abs}"
-  cert_path="$(find "${output_dir_abs}" -maxdepth 1 -type f -name "*.p12" -print -quit)"
-  cert_password_path="$(find "${output_dir_abs}" -maxdepth 1 -type f -name "*.password" -print -quit)"
+elif [[ -n "${certificate_type:-}" ]]; then
+  echo "Downloading every ${certificate_type} certificate for team ${team_id}…"
+  "${hexsign_bin}" certificates download \
+    --type "${certificate_type}" --team-id "${team_id}" \
+    --output-dir "${output_dir_abs}"
 fi
 
 if [[ -n "${profile_id:-}" ]]; then
   echo "Downloading provisioning profile ${profile_id}…"
   "${hexsign_bin}" profiles download "${profile_id}" --output-dir "${output_dir_abs}"
-  profile_path="$(find "${output_dir_abs}" -maxdepth 1 -type f -name "*.mobileprovision" -print -quit)"
+elif [[ -n "${bundle_id:-}" ]]; then
+  if [[ -n "${team_id:-}" ]]; then
+    echo "Downloading every profile for bundle ${bundle_id} (team ${team_id})…"
+    "${hexsign_bin}" profiles download \
+      --bundle-id "${bundle_id}" --team-id "${team_id}" \
+      --output-dir "${output_dir_abs}"
+  else
+    echo "Downloading every profile for bundle ${bundle_id}…"
+    "${hexsign_bin}" profiles download \
+      --bundle-id "${bundle_id}" \
+      --output-dir "${output_dir_abs}"
+  fi
+fi
+
+cert_paths=()
+cert_password_paths=()
+profile_paths=()
+
+if [[ -n "${certificate_id:-}" || -n "${certificate_type:-}" ]]; then
+  while IFS= read -r line; do cert_paths+=("${line}"); done \
+    < <(find "${output_dir_abs}" -maxdepth 1 -type f -name "*.p12" | sort)
+  while IFS= read -r line; do cert_password_paths+=("${line}"); done \
+    < <(find "${output_dir_abs}" -maxdepth 1 -type f -name "*.password" | sort)
+fi
+
+if [[ -n "${profile_id:-}" || -n "${bundle_id:-}" ]]; then
+  while IFS= read -r line; do profile_paths+=("${line}"); done \
+    < <(find "${output_dir_abs}" -maxdepth 1 -type f -name "*.mobileprovision" | sort)
 fi
 
 # ── expose outputs ──────────────────────────────────────────────────────────────
 
-envman add --key HEXSIGN_CERTIFICATE_PATH          --value "${cert_path}"
-envman add --key HEXSIGN_CERTIFICATE_PASSWORD_PATH --value "${cert_password_path}"
-envman add --key HEXSIGN_PROFILE_PATH              --value "${profile_path}"
+join_lines() { printf "%s\n" "$@" | sed '/^$/d'; }
+
+first_or_empty() {
+  if [[ $# -ge 1 ]]; then printf "%s" "$1"; else printf ""; fi
+}
+
+cert_first="$(first_or_empty "${cert_paths[@]+"${cert_paths[@]}"}")"
+cert_password_first="$(first_or_empty "${cert_password_paths[@]+"${cert_password_paths[@]}"}")"
+profile_first="$(first_or_empty "${profile_paths[@]+"${profile_paths[@]}"}")"
+
+cert_all="$(join_lines "${cert_paths[@]+"${cert_paths[@]}"}")"
+cert_password_all="$(join_lines "${cert_password_paths[@]+"${cert_password_paths[@]}"}")"
+profile_all="$(join_lines "${profile_paths[@]+"${profile_paths[@]}"}")"
+
+envman add --key HEXSIGN_CERTIFICATE_PATH           --value "${cert_first}"
+envman add --key HEXSIGN_CERTIFICATE_PASSWORD_PATH  --value "${cert_password_first}"
+envman add --key HEXSIGN_PROFILE_PATH               --value "${profile_first}"
+envman add --key HEXSIGN_CERTIFICATE_PATHS          --value "${cert_all}"
+envman add --key HEXSIGN_CERTIFICATE_PASSWORD_PATHS --value "${cert_password_all}"
+envman add --key HEXSIGN_PROFILE_PATHS              --value "${profile_all}"
 
 echo ""
 echo "✓ Done."
-[[ -n "${cert_path}"          ]] && echo "  certificate:          ${cert_path}"
-[[ -n "${cert_password_path}" ]] && echo "  certificate password: ${cert_password_path}"
-[[ -n "${profile_path}"       ]] && echo "  provisioning profile: ${profile_path}"
+[[ ${#cert_paths[@]}          -gt 0 ]] && echo "  certificates (${#cert_paths[@]}):          ${cert_first}"
+[[ ${#cert_password_paths[@]} -gt 0 ]] && echo "  certificate passwords (${#cert_password_paths[@]}): ${cert_password_first}"
+[[ ${#profile_paths[@]}       -gt 0 ]] && echo "  provisioning profiles (${#profile_paths[@]}):       ${profile_first}"
